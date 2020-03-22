@@ -92,7 +92,7 @@ class SpecialOAuth2Client extends SpecialPage {
 	}
 
 	private function _handleCallback(){
-		global $wgRequest;
+		global $wgRequest, $wgOut;
 
 		try {
 			$storedState = $wgRequest->getSession()->get('oauth2state');
@@ -104,6 +104,12 @@ class SpecialOAuth2Client extends SpecialPage {
 					throw new UnexpectedValueException("Required state parameter missing");
 				}
 			}
+
+            if (!isset($_GET['code'])) {
+                $title = Title::newMainPage();
+                $wgOut->redirect($title->getFullURL());
+                return false;
+            }
 
 			// Try to get an access token using the authorization code grant.
 			$accessToken = $this->_provider->getAccessToken('authorization_code', [
@@ -117,21 +123,23 @@ class SpecialOAuth2Client extends SpecialPage {
 
 		$resourceOwner = $this->_provider->getResourceOwner($accessToken);
 		$user = $this->_userHandling( $resourceOwner->toArray() );
+        global $wgOAuth2Client;
+        if (!$user) {
+            $title = Title::newFromText($wgOAuth2Client['configuration']['target_login_fail']);
+            $wgOut->redirect($title->getFullURL());
+            return false;
+        }
 		$user->setCookies();
 
-		global $wgOut, $wgRequest;
-		$title = null;
+		global $wgRequest;
 		$wgRequest->getSession()->persist();
 		if( $wgRequest->getSession()->exists('returnto') ) {
-			$title = Title::newFromText( $wgRequest->getSession()->get('returnto') );
 			$wgRequest->getSession()->remove('returnto');
 			$wgRequest->getSession()->save();
 		}
 
-		if( !$title instanceof Title || 0 > $title->mArticleID ) {
-			$title = Title::newMainPage();
-		}
-		$wgOut->redirect( $title->getFullURL() );
+        $title = Title::newFromText($wgOAuth2Client['configuration']['target_login_success']);
+        $wgOut->redirect( $title->getFullURL() );
 		return true;
 	}
 
@@ -155,6 +163,10 @@ class SpecialOAuth2Client extends SpecialPage {
 
 		$username = JsonHelper::extractValue($response, $wgOAuth2Client['configuration']['username']);
 		$email =  JsonHelper::extractValue($response, $wgOAuth2Client['configuration']['email']);
+
+        if (!$wgOAuth2Client['configuration']['onLogin']($username)) {
+            return null;
+        }
 
 		$user = User::newFromName($username, 'creatable');
 		if (!$user) {
