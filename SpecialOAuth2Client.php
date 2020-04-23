@@ -132,13 +132,17 @@ class SpecialOAuth2Client extends SpecialPage {
 		$user->setCookies();
 
 		global $wgRequest;
+        $title = null;
 		$wgRequest->getSession()->persist();
 		if( $wgRequest->getSession()->exists('returnto') ) {
+            $title = Title::newFromText( $wgRequest->getSession()->get('returnto') );
 			$wgRequest->getSession()->remove('returnto');
 			$wgRequest->getSession()->save();
 		}
 
-        $title = Title::newFromText($wgOAuth2Client['configuration']['target_login_success']);
+        if($title == null || $title->isMainPage()) {
+            $title = Title::newFromText($wgOAuth2Client['configuration']['target_login_success']);
+        }
         $wgOut->redirect( $title->getFullURL() );
 		return true;
 	}
